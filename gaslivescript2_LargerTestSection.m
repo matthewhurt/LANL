@@ -1,5 +1,5 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%% _______________ Gas Compression Code, v1 11.28.21 _________________%%
+%% _____________ Gas Compression Code, vfinal 04.19.22 _______________%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
@@ -17,16 +17,16 @@ T_alt = 266.38;                                         % [K], 11000 [ft]
 %T_alt = 273.54;                                         % [K], 7300 [ft]
 
 R = 8.314/0.02897;                                      % [J/(kg-K)]
-gamma = 1.4;
-Cp = (gamma*R)/(gamma-1);                               % calorically perfect gas [J/(kg-K)]
+gammaa = 1.4;
+Cp = (gammaa*R)/(gammaa-1);                               % calorically perfect gas [J/(kg-K)]
 Cv = Cp-R;
 T_liq = 273.15-196;                                     % air liquefaction temperature
-T_convert = (1+((gamma-1)/2).*Ma);
-P_convert = (1+((gamma-1)/2).*Ma).^(-gamma/(gamma-1));
+T_convert = (1+((gammaa-1)/2).*Ma);
+P_convert = (1+((gammaa-1)/2).*Ma).^(-gammaa/(gammaa-1));
 time = 30;                                              % [sec]
 mass = mDot_WT.*time;
-vol_alt = ro_alt*mass;                                  % [m^3]
-P_tank_max = 2.2063e+7;                                 % [Pa]
+P_tank_max = 2.7579e7;                                 % [Pa]
+T_tank_max = 300;                                       % K  atmospheric temperature in Los Alamos NM for storage tank calcs
 
 
 
@@ -39,10 +39,12 @@ A_4i = 1.98*180;                            % cross Sectional Area: Nozzle Entra
 mDot_4i = mDot_WT;                          % mass flow rate: Nozzle Entrance
 P_4i_tot = [128.56, 1587.27, 6209.75, 21219.62]*10^3;                     % total pressure: Nozzle Entrance
 P_4i = P_4i_tot.*P_convert;
-T_4i_tot = T_liq.*(1+(((gamma-1)/2).*Ma.^2));  % temperature: Nozzle Entrance, stdAtm(Pressure)
+T_4i_tot = T_liq.*(1+(((gammaa-1)/2).*Ma.^2));  % temperature: Nozzle Entrance, stdAtm(Pressure)
+T_4i_stat = T_liq;  % static temperature [K]
 ro_4i = P_4i_tot./(R.*T_4i_tot);
 
 % exit
+M_4e = 0.95;                                % estimated Mach at WT exit
 V_4e = 7.66;                                % volume of Diffuser
 A_4e = 1.98^2;                              % cross Sectional Area: Diffuser Exit
 mDot_4e = mDot_4i;                          % mass flow rate: Diffuser Exit
@@ -50,7 +52,7 @@ P_4e_tot = [42.21, 97.96, 95.33, 64.61]*10^3;                      % total press
 P_4e = P_4e_tot.*P_convert;
 T_4e_tot = T_4i_tot;                        % temperature: Diffuser Exit, stdAtm(Pressure)
 ro_4e = P_4e_tot./(R.*T_4e_tot);
-
+T_4e_stat = T_4e_tot/(1 + (M_4e^2)*((gammaa-1)/2));  % static temperature [K]
 h_4 = Cp*(T_4i_tot-T_4e_tot);
 
 
@@ -60,9 +62,9 @@ h_4 = Cp*(T_4i_tot-T_4e_tot);
 
 %% State 5 - Heat Exchanger (After WT)
 % Assumptions: Cp = const, Cv = const, ideal gas (P=ro*RT)
-
 P_5 = P_4e_tot;
 T_5e = T_alt*0.5;
+T_5e_stat = T_5e;
 Wdot_5 = 0;                     % Power generated/used is zero
 mDot_5i = mDot_4e;
 h_5i = T_4e_tot*Cp;
@@ -70,7 +72,6 @@ u_5i = T_4e_tot*Cv;
 h_5e = T_5e*Cp;
 ro_5 = P_5/(R*T_5e);
 vel_5 = mDot_5i/(A_4e*ro_5);
-
 h_5 = h_5e-h_5i;
 Qdot_5 = -h_5.*mDot_5i;          % [J/s]
 
@@ -85,12 +86,13 @@ Wdot_6 = 0;
 h_6i = h_5e;
 P_6i = 1000;                                     % Initial pressure before run
 P_6f = P_5;                                      % Final Pressure after run
-ro_6 = ((P_6i./P_5).*(ro_5.^gamma)).^(1/gamma);
+ro_6 = ((P_6i./P_5).*(ro_5.^gammaa)).^(1/gammaa);
 T_6 = P_6i./(R.*ro_6);
+T_6stat = T_6;
 h_6e = Cp*T_6;
 h_6 = h_6e-h_6i;
 Vol_6 = mDot_WT * time *R*T_5e./(P_6f-P_6i);
-fprintf('The volume of the Vacuum Chamber is : %d meters^3.\n', Vol_6);
+fprintf('The volume of the Vacuum Chamber is : %d meters^3.\n', max(Vol_6));
 
 
 
@@ -102,8 +104,6 @@ fprintf('The volume of the Vacuum Chamber is : %d meters^3.\n', Vol_6);
 %% State 1 - Compressor
 % Assumptions: Cp = const, Cv = const, ideal gas (P=ro*RT)
 
-Vol_2 = 8000;                   % Iterative Matthew H. calculation, [m^3]
-
 Qdot_1 = 0;                     % Power generated/used is zero
 AV_1 = 27000/((3.281^3)*60);    % [m^3/s]
 ro_1i = ro_alt;
@@ -111,9 +111,10 @@ mDot_1 = AV_1*ro_1i;            % [kg/s]
 T_1i = T_alt;
 P_1e = P_4i_tot;                % Inlet of the Nozzle
 P_1i = P_alt;
-ro_1e = ((P_1e./P_1i).*(ro_1i.^gamma)).^(1/gamma);
+ro_1e = ((P_1e./P_1i).*(ro_1i.^gammaa)).^(1/gammaa);
 h_1i = Cp.*T_1i;
 T_1e = P_1e/(R*ro_1e);
+T_1e_stat = T_1e;
 h_1e = Cp*T_1e;
 h_1 = h_1i-h_1e;
 u_1 = Cv*(T_1i-T_1e);
@@ -129,15 +130,20 @@ Wdot_1_1run = mDot_WT*h_1;  % [J/s]
 Wdot_2 = 0;             % Power generated/used is zero
 P_2 = P_4i_tot;         % Needs to be inlet of Nozzle, assume volume is large enough for constant 
 T_2 = T_alt;            % Overtime returns back to atmospheric
+T_2stat = T_2;
 Qdot_2 = 0;
 ro_2 = P_2/(R*T_2);
 h_2 = Cp*T_2;
 u_2 = Cv*T_2;
-m_fixed = 1e18;
-strg_tank_vol = mDot_WT * time./ (P_1e./(R*T_alt).*((P_tank_max./P_1e).^gamma)-1);  % max(mass)*R*T_alt/(max(P_4i_tot)*(m_fixed/(m_fixed-max(mass))))
 
-
-
+V_small = (mDot_WT*time)./ (((P_2./(R*T_tank_max)).*((P_tank_max./P_2).^(1/gammaa) - 1)));  % storage tank volume for max pressure
+fprintf('Selecting a higher tank pressure, tank volume in cubic meeters are :\n\t\tMach = 3\tMach = 5\tMach = 7\tMach = 10\n');
+disp(V_small);
+% calculating pressure after run from max pressure.
+rho_2 = (1/V_small(4)).*(P_tank_max*V_small(4)./(R*T_tank_max) - mDot_WT.*time);
+P_final = P_tank_max.*((1 + ((mDot_WT*time)./(rho_2.*V_small(4)))).^-gammaa);
+fprintf('The final pressure in the storage tank after a run starting at max pressure for each mach number is\n')
+disp(P_final);
 
 %% State 3 - Heat Exchanger (Prior to WT)
 % Assumptions: Cp = const, Cv = const, ideal gas (P=ro*RT)
@@ -148,7 +154,8 @@ Wdot_3 = 0;                     % Power generated/used is zero
 mDot_3e = mDot_4i;              % mass flow rate: Diffuser Exit
 h_3e = T_4i_tot*Cp;
 u_3e = T_4i_tot*Cv;
-
+M_3e = 0.95;                                % estimated Mach at WT inlet
+T_3e_stat = T_4i_tot/(1+(((gammaa-1)/2)*M_3e^2));  % static temperature [K]
 % inlet
 T_3 = T_2;
 h_3i = T_3*Cp;
@@ -172,6 +179,7 @@ ro_3 = ro_2;                    % Assuming incompressible state
 i = 1;
 Mach3.ro = [ro_1i, ro_1e(i), ro_2(i), ro_3(i), ro_4i(i), ro_4e(i), ro_5(i), ro_6(i)];
 Mach3.T  = [T_1i, T_1e(i), T_2, T_3, T_4i_tot(i), T_4e_tot(i), T_5e(i), T_6(i)];
+Mach3.T_stat  = [T_1i/T_1i, T_1e_stat/T_1e, T_2stat/T_2, T_3e_stat(i)/T_4i_tot(i), T_4i_stat/T_4i_tot(i), T_4e_stat(i)/T_4e_tot(i), T_5e/T_5e, T_6stat(i)/T_6(i)];
 Mach3.P  = [P_1i, P_1e(i), P_2(i), P_3i(i), P_4i_tot(i), P_4e_tot(i), P_5(i), P_6f(i)];
 Mach3.h  = [h_1i, h_1e, h_2, h_3(i), Cp*T_4i_tot(i), Cp*T_4e_tot(i), h_5(i), h_6(i)];
 Mach3.v  = 1./Mach3.ro;
@@ -179,6 +187,7 @@ Mach3.v  = 1./Mach3.ro;
 i = 2;
 Mach5.ro = [ro_1i, ro_1e(i), ro_2(i), ro_3(i), ro_4i(i), ro_4e(i), ro_5(i), ro_6(i)];
 Mach5.T  = [T_1i, T_1e, T_2, T_3, T_4i_tot(i), T_4e_tot(i), T_5e, T_6(i)];
+Mach5.T_stat  = [T_1i/T_1i, T_1e_stat/T_1e, T_2stat/T_2, T_3e_stat(i)/T_4i_tot(i), T_4i_stat/T_4i_tot(i), T_4e_stat(i)/T_4e_tot(i), T_5e/T_5e, T_6stat(i)/T_6(i)];
 Mach5.P  = [P_1i, P_1e(i), P_2(i), P_3i(i), P_4i_tot(i), P_4e_tot(i), P_5(i), P_6f(i)];
 Mach5.h  = [h_1i, h_1e, h_2, h_3(i), Cp*T_4i_tot(i), Cp*T_4e_tot(i), h_5(i), h_6(i)];
 Mach5.v  = 1./Mach5.ro;
@@ -186,6 +195,7 @@ Mach5.v  = 1./Mach5.ro;
 i = 3;
 Mach7.ro = [ro_1i, ro_1e(i), ro_2(i), ro_3(i),ro_4i(i), ro_4e(i), ro_5(i), ro_6(i)];
 Mach7.T  = [T_1i, T_1e, T_2, T_3, T_4i_tot(i), T_4e_tot(i), T_5e, T_6(i)];
+Mach7.T_stat  = [T_1i/T_1i, T_1e_stat/T_1e, T_2stat/T_2, T_3e_stat(i)/T_4i_tot(i), T_4i_stat/T_4i_tot(i), T_4e_stat(i)/T_4e_tot(i), T_5e/T_5e, T_6stat(i)/T_6(i)];
 Mach7.P  = [P_1i, P_1e(i), P_2(i), P_3i(i), P_4i_tot(i), P_4e_tot(i), P_5(i), P_6f(i)];
 Mach7.h  = [h_1i, h_1e, h_2, h_3(i), Cp*T_4i_tot(i), Cp*T_4e_tot(i), h_5(i), h_6(i)];
 Mach7.v  = 1./Mach7.ro;
@@ -193,6 +203,7 @@ Mach7.v  = 1./Mach7.ro;
 i = 4;
 Mach10.ro = [ro_1i, ro_1e(i), ro_2(i), ro_3(i),ro_4i(i), ro_4e(i), ro_5(i), ro_6(i)];
 Mach10.T  = [T_1i, T_1e, T_2, T_3, T_4i_tot(i), T_4e_tot(i), T_5e, T_6(i)];
+Mach10.T_stat  = [T_1i/T_1i, T_1e_stat/T_1e, T_2stat/T_2, T_3e_stat(i)/T_4i_tot(i), T_4i_stat/T_4i_tot(i), T_4e_stat(i)/T_4e_tot(i), T_5e/T_5e, T_6stat(i)/T_6(i)];
 Mach10.P  = [P_1i, P_1e(i), P_2(i), P_3i(i), P_4i_tot(i), P_4e_tot(i), P_5(i), P_6f(i)];
 % Mach10.h  = [h_1i, h_1e, h_2, h_3(i), Cp*T_4i_tot(i), Cp*T_4e_tot(i), h_5(i), h_6(i)];
 Mach10.h  = [h_1i, h_1e, h_2, h_3e(i), Cp*T_4i_tot(i), Cp*T_4e_tot(i), h_5e, h_6e(i)];
@@ -307,6 +318,45 @@ xlabel('States', 'FontSize', 12)
 ylabel('Pressure, P [Pa]','FontSize', 12)
 title('Pressure vs. State','FontSize', 15)
 % saveas(gcf,'Graphs_11000ft/EnthalpyVolume_Ma3.png')
+%%%%%%%%%%%%%%%%%%%%%%%%%
+% Temperature at states %
+%%%%%%%%%%%%%%%%%%%%%%%%%
+fig = figure();
+ax = axes(fig);
+hold(ax, 'on')
+plot(ax, states, Mach3.T, '--o')
+text(ax, states, Mach3.T, labels, 'FontSize', 12)
+plot(ax, states, Mach5.T, '--o')
+text(ax, states, Mach5.T, labels, 'FontSize', 12)
+plot(ax, states, Mach7.T, '--o')
+text(ax, states, Mach7.T, labels, 'FontSize', 12)
+plot(ax, states, Mach10.T, '--o')
+text(ax, states, Mach10.T, labels, 'FontSize', 12)
+hold(ax, 'on')
+legend('Mach 3', 'Mach 5', 'Mach 7', 'Mach 10')
+grid on
+xlabel('States', 'FontSize', 12)
+ylabel('Total Temperature, T [K]','FontSize', 12)
+title('Total Temperature vs. State','FontSize', 15)
+
+fig = figure();
+ax = axes(fig);
+hold(ax, 'on')
+plot(ax, states, Mach3.T_stat, '--o')
+text(ax, states, Mach3.T_stat, labels, 'FontSize', 12)
+plot(ax, states, Mach5.T_stat, '--o')
+text(ax, states, Mach5.T_stat, labels, 'FontSize', 12)
+plot(ax, states, Mach7.T_stat, '--o')
+text(ax, states, Mach7.T_stat, labels, 'FontSize', 12)
+plot(ax, states, Mach10.T_stat, '--o')
+text(ax, states, Mach10.T_stat, labels, 'FontSize', 12)
+hold(ax, 'on')
+legend('Mach 3', 'Mach 5', 'Mach 7', 'Mach 10')
+grid on
+xlabel('States', 'FontSize', 12)
+ylabel('T/T_o','FontSize', 12)
+title('T/T_o vs. State','FontSize', 15)
+
 
 % Enthalpy vs. Specific Volume Mach 5
 figure
